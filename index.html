@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
   <!-- Babel CDN for JSX -->
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
-  <!-- bcrypt CDN -->
+  <!-- bcryptjs CDN -->
   <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
   <!-- JWT CDN -->
   <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
@@ -80,7 +80,7 @@
         wynLog(`Name: Wyn.GG - Registration failed: Email ${email} exists`);
         throw new Error('Email already registered');
       }
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcryptjs.hash(password, 10);
       users.set(email, { email, password: hashedPassword });
       wynLog(`Name: Wyn.GG - User registered: ${email}`);
       return 'Registration successful';
@@ -92,7 +92,7 @@
         wynLog(`Name: Wyn.GG - Login failed: Email ${email} not found`);
         throw new Error('Invalid email or password');
       }
-      const isValid = await bcrypt.compare(password, user.password);
+      const isValid = await bcryptjs.compare(password, user.password);
       if (!isValid) {
         wynLog(`Name: Wyn.GG - Login failed: Invalid password for ${email}`);
         throw new Error('Invalid email or password');
