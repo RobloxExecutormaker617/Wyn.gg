@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Name: Wyn.GG - Luau Decompiler</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React and ReactDOM CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Babel CDN for JSX -->
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <!-- bcrypt CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
+  <!-- JWT CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+  <!-- base64-js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/base64-js@1.5.1/base64-js.min.js"></script>
+  <style>
+    pre { white-space: pre-wrap; }
+    .log-panel { max-height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Logging utility (mimics wyn_print/rbx_print)
+    const wynLog = (message) => {
+      const timestamp = new Date().toISOString();
+      const logMessage = `[Wyn.GG ${timestamp}] ${message}`;
+      console.log(logMessage);
+      const logs = JSON.parse(localStorage.getItem('wynLogs') || '[]');
+      logs.push(logMessage);
+      localStorage.setItem('wynLogs', JSON.stringify(logs));
+      return logMessage;
+    };
+
+    // Simplified Luau decompiler (inspired by Unluau)
+    const OPCODES = {
+      0x00: 'OP_RETURN',
+      0x01: 'OP_GETGLOBAL',
+      0x02: 'OP_SETGLOBAL',
+    };
+
+    const decompileLuau = (base64Bytecode) => {
+      wynLog('Name: Wyn.GG - Starting decompilation');
+      try {
+        if (!base64Bytecode) throw new Error('No bytecode provided');
+        const bytecode = base64js.toByteArray(base64Bytecode);
+        if (!bytecode.length) throw new Error('Empty bytecode');
+
+        let output = '-- Decompiled with Wyn.GG LuaU Decompiler\n';
+        for (let i = 0; i < bytecode.length; i++) {
+          const opcode = bytecode[i];
+          const opName = OPCODES[opcode] || `UNKNOWN_OP_${opcode.toString(16)}`;
+          output += `    -- ${opName}\n`;
+          if (opName === 'OP_GETGLOBAL' || opName === 'OP_SETGLOBAL') {
+            i += 2; // Skip string index
+            output += `    ${opName === 'OP_GETGLOBAL' ? 'local x = ' : ''}_G["unknown"]\n`;
+          }
+        }
+        wynLog('Name: Wyn.GG - Decompilation successful');
+        return output;
+      } catch (err) {
+        wynLog(`Name: Wyn.GG - Decompilation failed: ${err.message}`);
+        return `-- Decompiled with Wyn.GG LuaU Decompiler\n-- Error: ${err.message}`;
+      }
+    };
+
+    // Authentication utilities
+    const JWT_SECRET = 'wyn_gg_secret_2025'; // Change in production
+    const users = new Map(); // In-memory user storage
+
+    const register = async (email, password) => {
+      if (users.has(email)) {
+        wynLog(`Name: Wyn.GG - Registration failed: Email ${email} exists`);
+        throw new Error('Email already registered');
+      }
+      const hashedPassword = await bcrypt.hash(password, 10);
+      users.set(email, { email, password: hashedPassword });
+      wynLog(`Name: Wyn.GG - User registered: ${email}`);
+      return 'Registration successful';
+    };
+
+    const login = async (email, password) => {
+      const user = users.get(email);
+      if (!user) {
+        wynLog(`Name: Wyn.GG - Login failed: Email ${email} not found`);
+        throw new Error('Invalid email or password');
+      }
+      const isValid = await bcrypt.compare(password, user.password);
+      if (!isValid) {
+        wynLog(`Name: Wyn.GG - Login failed: Invalid password for ${email}`);
+        throw new Error('Invalid email or password');
+      }
+      // Simplified JWT creation
+      const token = btoa(JSON.stringify({ email, exp: Date.now() + 3600000 })); // 1h expiry
+      wynLog(`Name: Wyn.GG - Login successful: ${email}`);
+      return token;
+    };
+
+    const verifyToken = (token) => {
+      try {
+        const decoded = JSON.parse(atob(token));
+        if (decoded.exp < Date.now()) throw new Error('Token expired');
+        return decoded;
+      } catch (err) {
+        wynLog(`Name: Wyn.GG - Token verification failed: ${err.message}`);
+        throw new Error('Invalid token');
+      }
+    };
+
+    // Navbar Component
+    const Navbar = ({ user, onLogout }) => (
+      <nav className="bg-blue-600 p-4">
+        <div className="container mx-auto flex justify-between items-center">
+          <h1 className="text-white text-2xl font-bold">Name: Wyn.GG</h1>
+          {user && (
+            <div className="flex items-center">
+              <span className="text-white mr-4">Welcome, {user}</span>
+              <button
+                onClick={onLogout}
+                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
+      </nav>
+    );
+
+    // AuthForm Component
+    const AuthForm = ({ setToken, setUser }) => {
+      const [isLogin, setIsLogin] = useState(true);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        try {
+          if (isLogin) {
+            const token = await login(email, password);
+            localStorage.setItem('token', token);
+            localStorage.setItem('email', email);
+            setToken(token);
+            setUser(email);
+          } else {
+            await register(email, password);
+            setIsLogin(true);
+            setError('Registration successful! Please log in.');
+          }
+        } catch (err) {
+          setError(err.message);
+        }
+      };
+
+      return (
+        <div className="max-w-md mx-auto bg-white p-6 rounded shadow mt-8">
+          <h2 className="text-2xl font-bold mb-4">{isLogin ? 'Login' : 'Register'}</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="block mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full border p-2 rounded"
+                required
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border p-2 rounded"
+                required
+              />
+            </div>
+            {error && <p className="text-red-500 mb-4">{error}</p>}
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
+            >
+              {isLogin ? 'Login' : 'Register'}
+            </button>
+          </form>
+          <button
+            onClick={() => setIsLogin(!isLogin)}
+            className="mt-4 text-blue-600 hover:underline"
+          >
+            {isLogin ? 'Need an account? Register' : 'Have an account? Login'}
+          </button>
+        </div>
+      );
+    };
+
+    // Decompiler Component
+    const Decompiler = ({ token }) => {
+      const [bytecodeFile, setBytecodeFile] = useState(null);
+      const [decompiled, setDecompiled] = useState('');
+      const [error, setError] = useState('');
+      const [logs, setLogs] = useState([]);
+
+      useEffect(() => {
+        setLogs(JSON.parse(localStorage.getItem('wynLogs') || '[]'));
+        const interval = setInterval(() => {
+          setLogs(JSON.parse(localStorage.getItem('wynLogs') || '[]'));
+        }, 1000);
+        return () => clearInterval(interval);
+      }, []);
+
+      const handleFileChange = (e) => {
+        setBytecodeFile(e.target.files[0]);
+        setError('');
+        setDecompiled('');
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!bytecodeFile) {
+          setError('Please select a bytecode file');
+          return;
+        }
+        try {
+          verifyToken(token);
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64Bytecode = btoa(reader.result);
+            const result = decompileLuau(base64Bytecode);
+            setDecompiled(result);
+          };
+          reader.readAsBinaryString(bytecodeFile);
+        } catch (err) {
+          setError(err.message);
+        }
+      };
+
+      return (
+        <div className="max-w-2xl mx-auto bg-white p-6 rounded shadow mt-8">
+          <h2 className="text-2xl font-bold mb-4">Decompile Luau Script</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="block mb-1">Upload Bytecode File</label>
+              <input
+                type="file"
+                accept=".bin"
+                onChange={handleFileChange}
+                className="w-full border p-2 rounded"
+              />
+            </div>
+            {error && <p className="text-red-500 mb-4">{error}</p>}
+            <button
+              type="submit"
+              className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
+            >
+              Decompile
+            </button>
+          </form>
+          {decompiled && (
+            <div className="mt-6">
+              <h3 className="text-xl font-bold mb-2">Decompiled Script</h3>
+              <pre className="bg-gray-100 p-4 rounded overflow-auto max-h-96">{decompiled}</pre>
+            </div>
+          )}
+          <div className="mt-6">
+            <h3 className="text-xl font-bold mb-2">Logs</h3>
+            <div className="bg-gray-100 p-4 rounded log-panel">
+              {logs.map((log, i) => (
+                <p key={i} className="text-sm">{log}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Main App Component
+    const App = () => {
+      const [token, setToken] = useState(localStorage.getItem('token'));
+      const [user, setUser] = useState(localStorage.getItem('email'));
+
+      const handleLogout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('email');
+        localStorage.removeItem('wynLogs');
+        setToken(null);
+        setUser(null);
+        wynLog('Name: Wyn.GG - User logged out');
+      };
+
+      return (
+        <div>
+          <Navbar user={user} onLogout={handleLogout} />
+          <div className="container mx-auto p-4">
+            <h1 className="text-3xl font-bold text-center mb-6">Name: Wyn.GG - Luau Decompiler</h1>
+            {token ? <Decompiler token={token} /> : <AuthForm setToken={setToken} setUser={setUser} />}
+          </div>
+        </div>
+      );
+    };
+
+    // Render App with createRoot
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
